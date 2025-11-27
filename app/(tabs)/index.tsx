@@ -1,6 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { Image } from "expo-image"
 import { LinearGradient } from "expo-linear-gradient"
+import * as Location from "expo-location"; // <--- NUEVA IMPORTACIÓN
 import { useEffect, useState } from "react"
 import {
   ActivityIndicator,
@@ -24,6 +25,30 @@ type Currency = {
   code: string
   name: string
   flag: string
+}
+
+// <--- NUEVO: Mapeo simple de código de país a moneda
+const COUNTRY_TO_CURRENCY: Record<string, string> = {
+  MX: "MXN",
+  US: "USD",
+  ES: "EUR",
+  FR: "EUR",
+  DE: "EUR",
+  IT: "EUR",
+  PT: "EUR",
+  CA: "CAD",
+  GB: "GBP",
+  JP: "JPY",
+  BR: "BRL",
+  AR: "ARS",
+  CO: "COP",
+  CL: "CLP",
+  PE: "PEN",
+  AU: "AUD",
+  CH: "CHF",
+  CN: "CNY",
+  KR: "KRW",
+  IN: "INR",
 }
 
 export default function ExchangeScreeen() {
@@ -71,6 +96,63 @@ export default function ExchangeScreeen() {
       }
     } catch (error) {
       Alert.alert("Error", "Failed to fetch currency data")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // <--- NUEVA FUNCIÓN: Lógica de Ubicación
+  const handleUseLocation = async () => {
+    setIsLoading(true)
+    try {
+      // 1. Pedir Permiso
+      let { status } = await Location.requestForegroundPermissionsAsync()
+      if (status !== "granted") {
+        Alert.alert(
+          "Permiso denegado",
+          "No podemos detectar tu moneda local sin permiso de ubicación."
+        )
+        setIsLoading(false)
+        return
+      }
+
+      // 2. Obtener coordenadas
+      let location = await Location.getCurrentPositionAsync({})
+
+      // 3. Geocodificación inversa (Coords -> País)
+      let address = await Location.reverseGeocodeAsync({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      })
+
+      if (address.length > 0 && address[0].isoCountryCode) {
+        const countryCode = address[0].isoCountryCode
+        const detectedCurrency = COUNTRY_TO_CURRENCY[countryCode]
+
+        if (detectedCurrency) {
+          // Verificar si la moneda detectada existe en nuestra lista de monedas de la API
+          const existsInApi = currencies.find((c) => c.code === detectedCurrency)
+          
+          if (existsInApi) {
+            setFrom(detectedCurrency)
+            Alert.alert("Ubicación detectada", `Moneda actualizada a ${detectedCurrency} (${countryCode})`)
+          } else {
+             // Si el país existe pero la moneda no está en la API de frankfurter
+             // Intentamos usar EUR si es Europa, o simplemente avisamos
+             if(["AT", "BE", "CY", "EE", "FI", "GR", "IE", "LV", "LT", "LU", "MT", "NL", "SK", "SI"].includes(countryCode)) {
+                 setFrom("EUR")
+                 Alert.alert("Ubicación detectada", `Moneda actualizada a EUR`)
+             } else {
+                Alert.alert("Aviso", `Estás en ${countryCode}, pero esa moneda no está soportada por la API actualmente.`)
+             }
+          }
+        } else {
+          Alert.alert("Aviso", `No pudimos determinar la moneda local para el código: ${countryCode}`)
+        }
+      }
+    } catch (error) {
+      console.log(error)
+      Alert.alert("Error", "Ocurrió un problema al obtener la ubicación.")
     } finally {
       setIsLoading(false)
     }
@@ -166,7 +248,18 @@ export default function ExchangeScreeen() {
             <Text style={styles.title}>Conversor de divisas</Text>
           </View>
 
-          <Text style={styles.label}>De:</Text>
+          {/* <--- NUEVO: Contenedor con Label y Botón de Ubicación */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 6 }}>
+            <Text style={[styles.label, { marginTop: 0, marginBottom: 0 }]}>De:</Text>
+            
+            <TouchableOpacity onPress={handleUseLocation} style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="location-outline" size={16} color={isDark ? "#818CF8" : "#3B82F6"} />
+              <Text style={{ color: isDark ? "#818CF8" : "#3B82F6", marginLeft: 4, fontSize: 13, fontWeight: "600" }}>
+                Usar mi ubicación
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity
             onPress={() => {
               setShowFromList(!showFromList)
